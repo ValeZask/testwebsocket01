@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -30,16 +30,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Получаем URL Railway для правильной работы WebSocket
-RAILWAY_STATIC_URL = os.getenv("RAILWAY_STATIC_URL", "localhost:8000")
-
 
 @app.get("/")
-async def get():
+async def get(request):
     """Простая HTML страница для тестирования чата"""
     # Определяем WebSocket URL в зависимости от окружения
-    ws_protocol = "wss" if RAILWAY_STATIC_URL != "localhost:8000" else "ws"
-    ws_url = f"{ws_protocol}://{RAILWAY_STATIC_URL}"
+    host = request.headers.get("host", "localhost:8000")
+    is_https = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
+    ws_protocol = "wss" if is_https else "ws"
+    ws_url = f"{ws_protocol}://{host}"
 
     return HTMLResponse(content=f"""
 <!DOCTYPE html>
@@ -262,8 +261,6 @@ async def get_online_users():
 async def health_check():
     """Health check для Railway"""
     return {{"status": "healthy"}}
-
-
 
 
 if __name__ == "__main__":
