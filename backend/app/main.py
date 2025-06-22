@@ -30,15 +30,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 @app.get("/")
-async def get(request):
+async def get(request: Request):
     """Простая HTML страница для тестирования чата"""
-    # Определяем WebSocket URL в зависимости от окружения
-    host = request.headers.get("host", "localhost:8000")
-    is_https = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
-    ws_protocol = "wss" if is_https else "ws"
-    ws_url = f"{ws_protocol}://{host}"
+    # Захардкодим WebSocket URL для Railway
+    ws_url = "wss://testwebsocket01-production.up.railway.app"
 
     return HTMLResponse(content=f"""
 <!DOCTYPE html>
@@ -88,9 +84,11 @@ async def get(request):
                 return;
             }}
 
+            console.log('Connecting to: {ws_url}/ws/' + username);
             ws = new WebSocket(`{ws_url}/ws/${{username}}`);
 
             ws.onopen = function(event) {{
+                console.log('WebSocket connected');
                 document.getElementById('status').innerText = 'Подключен';
                 document.getElementById('connectButton').disabled = true;
                 document.getElementById('disconnectButton').disabled = false;
@@ -100,11 +98,14 @@ async def get(request):
             }};
 
             ws.onmessage = function(event) {{
+                console.log('Message received:', event.data);
                 const data = JSON.parse(event.data);
                 displayMessage(data);
             }};
 
             ws.onclose = function(event) {{
+                console.log('WebSocket closed:', event);
+                alert(`WebSocket отключен: код ${{event.code}}, причина ${{event.reason || 'не указана'}}`);
                 document.getElementById('status').innerText = 'Отключен';
                 document.getElementById('connectButton').disabled = false;
                 document.getElementById('disconnectButton').disabled = true;
@@ -115,6 +116,7 @@ async def get(request):
 
             ws.onerror = function(error) {{
                 console.error('WebSocket error:', error);
+                alert(`Ошибка WebSocket: ${{error}}`);
             }};
         }}
 
@@ -129,10 +131,12 @@ async def get(request):
             const message = messageInput.value.trim();
 
             if (message && ws) {{
-                ws.send(JSON.stringify({{
+                const data = JSON.stringify({{
                     type: 'message',
                     content: message
-                }}));
+                }});
+                console.log('Sending message:', data);
+                ws.send(data);
                 messageInput.value = '';
             }}
         }}
@@ -146,7 +150,6 @@ async def get(request):
                 messageDiv.className += ' system';
                 messageDiv.innerHTML = data.content;
             }} else if (data.type === 'history') {{
-                // Отображаем историю сообщений
                 data.messages.forEach(msg => {{
                     const historyDiv = document.createElement('div');
                     historyDiv.className = 'message user';
@@ -171,7 +174,6 @@ async def get(request):
             messages.scrollTop = messages.scrollHeight;
         }}
 
-        // Отправка сообщения по Enter
         document.getElementById('messageInput').addEventListener('keypress', function(e) {{
             if (e.key === 'Enter') {{
                 sendMessage();
@@ -182,29 +184,24 @@ async def get(request):
 </html>
     """)
 
-
-@app.websocket("/ws/{{username}}")
+@app.websocket("/ws/{username}")
 async def websocket_endpoint(websocket: WebSocket, username: str, db: Session = Depends(get_db)):
     """WebSocket эндпоинт для чата"""
-
-    # Подключаем пользователя
+    logger.info(f"WebSocket connection attempt by {username}")
     await manager.connect(websocket, username)
 
     try:
-        # Отправляем историю сообщений новому пользователю
         recent_messages = db.query(Message).order_by(Message.created_at.desc()).limit(50).all()
-        recent_messages.reverse()  # Меняем порядок на хронологический
+        recent_messages.reverse()
 
         if recent_messages:
-            history_data = {{
+            history_data = {
                 "type": "history",
                 "messages": [msg.to_dict() for msg in recent_messages]
-            }}
+            }
             await manager.send_personal_message(json.dumps(history_data, ensure_ascii=False), websocket)
 
-        # Основной цикл обработки сообщений
         while True:
-            # Получаем сообщение от клиента
             data = await websocket.receive_text()
             message_data = json.loads(data)
 
@@ -212,33 +209,29 @@ async def websocket_endpoint(websocket: WebSocket, username: str, db: Session = 
                 content = message_data.get("content", "").strip()
 
                 if content:
-                    # Сохраняем сообщение в базу данных
                     db_message = Message(username=username, content=content)
                     db.add(db_message)
                     db.commit()
                     db.refresh(db_message)
 
-                    # Отправляем сообщение всем подключенным пользователям
-                    broadcast_data = {{
+                    broadcast_data = {
                         "type": "message",
                         "username": username,
                         "content": content,
                         "timestamp": db_message.created_at.isoformat() if db_message.created_at else None
-                    }}
+                    }
 
                     await manager.broadcast_message(broadcast_data)
-                    logger.info(f"Message from {{username}}: {{content}}")
+                    logger.info(f"Message from {username}: {content}")
 
     except WebSocketDisconnect:
-        # Пользователь отключился
         disconnected_user = manager.disconnect(websocket)
         if disconnected_user:
-            await manager.broadcast_system_message(f"{{disconnected_user}} покинул чат")
+            await manager.broadcast_system_message(f"{disconnected_user} покинул чат")
 
     except Exception as e:
-        logger.error(f"Error in websocket connection: {{e}}")
+        logger.error(f"Error in websocket connection: {e}")
         manager.disconnect(websocket)
-
 
 @app.get("/api/messages", response_model=List[dict])
 async def get_messages(limit: int = 50, db: Session = Depends(get_db)):
@@ -247,24 +240,20 @@ async def get_messages(limit: int = 50, db: Session = Depends(get_db)):
     messages.reverse()
     return [msg.to_dict() for msg in messages]
 
-
 @app.get("/api/online")
 async def get_online_users():
     """API для получения списка онлайн пользователей"""
-    return {{
+    return {
         "users": manager.get_connected_users(),
         "count": len(manager.active_connections)
-    }}
-
+    }
 
 @app.get("/health")
 async def health_check():
     """Health check для Railway"""
-    return {{"status": "healthy"}}
-
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
     import uvicorn
-
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
