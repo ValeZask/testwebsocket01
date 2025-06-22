@@ -1,0 +1,47 @@
+# Python/FastAPI
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+
+# Node.js/React
+node_modules/
+npm-debug.log*
+yarn-error.log*
+build/
+
+# Environment variables
+*.env
+.env.local
+.env.*.local
+
+# Docker
+*.log
+*.pid
+*.seed
+*.pid.lock
+Dockerfile.local
+docker-compose.override.yml
+
+# Database
+*.sql
+*.sqlite
+*.sqlite3
+
+# IDE and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated
+.DS_Store
+# Thumbs.db
+
+# Misc
+*.bak
+*.swp
+*~
