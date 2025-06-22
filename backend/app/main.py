@@ -251,6 +251,8 @@ async def health_check():
     """Health check для Railway"""
     return {"status": "healthy"}
 
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
