@@ -64,7 +64,7 @@ async def get(request: Request):
 
     <div>
         <input type="text" id="messageInput" placeholder="Введите сообщение" disabled />
-        <button id="sendButton" onclick="sendMessage()" disabled>jОтравить</button>
+        <button id="sendButton" onclick="sendMessage()" disabled>jОтправить в ад</button>
     </div>
 
     <div>
