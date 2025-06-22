@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="GroupChat WebSocket API", version="1.0.0")
 
-# Добавляем CORS для Railway
+# CORS отключён для теста (раскомментируйте для продакшена)
 # app.add_middleware(
 #     CORSMiddleware,
-#     allow_origins=["*"],  # В продакшене лучше указать конкретные домены
+#     allow_origins=["https://testwebsocket01-production.up.railway.app"],
 #     allow_credentials=True,
 #     allow_methods=["*"],
 #     allow_headers=["*"],
@@ -33,7 +33,6 @@ app = FastAPI(title="GroupChat WebSocket API", version="1.0.0")
 @app.get("/")
 async def get(request: Request):
     """Простая HTML страница для тестирования чата"""
-    # Захардкодим WebSocket URL для Railway
     ws_url = "wss://testwebsocket01-production.up.railway.app"
 
     return HTMLResponse(content=f"""
@@ -83,9 +82,8 @@ async def get(request: Request):
                 alert('Введите имя пользователя');
                 return;
             }}
-
             console.log('Connecting to: {ws_url}/ws/' + username);
-            ws = new WebSocket(`{ws_url}/ws/${{username}}`);
+            ws = new WebSocket('{ws_url}/ws/' + username);
 
             ws.onopen = function(event) {{
                 console.log('WebSocket connected');
@@ -100,7 +98,11 @@ async def get(request: Request):
             ws.onmessage = function(event) {{
                 console.log('Message received:', event.data);
                 const data = JSON.parse(event.data);
-                displayMessage(data);
+                if (data.type === 'online_count') {{
+                    document.getElementById('onlineCount').innerText = data.count;
+                }} else {{
+                    displayMessage(data);
+                }}
             }};
 
             ws.onclose = function(event) {{
@@ -129,12 +131,8 @@ async def get(request: Request):
         function sendMessage() {{
             const messageInput = document.getElementById('messageInput');
             const message = messageInput.value.trim();
-
             if (message && ws) {{
-                const data = JSON.stringify({{
-                    type: 'message',
-                    content: message
-                }});
+                const data = JSON.stringify({{ type: 'message', content: message }});
                 console.log('Sending message:', data);
                 ws.send(data);
                 messageInput.value = '';
@@ -228,7 +226,7 @@ async def websocket_endpoint(websocket: WebSocket, username: str, db: Session = 
         disconnected_user = manager.disconnect(websocket)
         if disconnected_user:
             await manager.broadcast_system_message(f"{disconnected_user} покинул чат")
-
+            await manager.broadcast_online_count()
     except Exception as e:
         logger.error(f"Error in websocket connection: {e}")
         manager.disconnect(websocket)
