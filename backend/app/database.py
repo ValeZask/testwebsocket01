@@ -6,12 +6,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/chat_db")
+# Railway предоставляет DATABASE_URL автоматически для PostgreSQL
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    # Fallback для локальной разработки
+    DATABASE_URL = "postgresql://postgres:password@localhost:5432/chat_db"
+
+# Railway использует postgres:// но SQLAlchemy 1.4+ требует postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Добавляем параметры для правильной работы с кодировкой
 engine = create_engine(
     DATABASE_URL,
-    echo=True,  # Логирование SQL запросов для отладки
+    echo=False,  # Отключаем в продакшене для производительности
     pool_pre_ping=True,  # Проверка соединения перед использованием
     connect_args={
         "client_encoding": "utf8",
